@@ -12,7 +12,7 @@
 
 [package]
 name = "serde_test"
-version = "1.0.119"
+version = "1.0.123"
 authors = ["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"]
 include = ["src/**/*.rs", "crates-io.md", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 description = "Token De/Serializer for testing De/Serialize implementations"
