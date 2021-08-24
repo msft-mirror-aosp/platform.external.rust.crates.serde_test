@@ -5,6 +5,15 @@
       "name": "serde_test_device_test_src_lib"
     },
     {
+      "name": "slab_device_test_src_lib"
+    },
+    {
+      "name": "slab_device_test_tests_serde"
+    },
+    {
+      "name": "slab_device_test_tests_slab"
+    },
+    {
       "name": "unicode-bidi_device_test_src_lib"
     }
   ]
