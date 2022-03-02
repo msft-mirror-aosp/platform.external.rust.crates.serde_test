@@ -10,10 +10,12 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
+rust-version = "1.15"
 name = "serde_test"
-version = "1.0.130"
+version = "1.0.136"
 authors = ["Erick Tryzelaar <erick.tryzelaar@gmail.com>", "David Tolnay <dtolnay@gmail.com>"]
-include = ["src/**/*.rs", "crates-io.md", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
+build = "build.rs"
+include = ["build.rs", "src/**/*.rs", "crates-io.md", "README.md", "LICENSE-APACHE", "LICENSE-MIT"]
 description = "Token De/Serializer for testing De/Serialize implementations"
 homepage = "https://serde.rs"
 documentation = "https://docs.serde.rs/serde_test/"
