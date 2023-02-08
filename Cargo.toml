@@ -12,7 +12,7 @@
 [package]
 rust-version = "1.13"
 name = "serde_test"
-version = "1.0.151"
+version = "1.0.152"
 authors = [
     "Erick Tryzelaar <erick.tryzelaar@gmail.com>",
     "David Tolnay <dtolnay@gmail.com>",
@@ -28,7 +28,7 @@ include = [
 ]
 description = "Token De/Serializer for testing De/Serialize implementations"
 homepage = "https://serde.rs"
-documentation = "https://docs.serde.rs/serde_test/"
+documentation = "https://docs.rs/serde_test"
 readme = "crates-io.md"
 keywords = [
     "serde",
@@ -42,6 +42,9 @@ repository = "https://github.com/serde-rs/serde"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[lib]
+doc-scrape-examples = false
 
 [dependencies.serde]
 version = "1.0.60"
