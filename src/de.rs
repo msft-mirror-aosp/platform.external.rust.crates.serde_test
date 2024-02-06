@@ -1,59 +1,53 @@
+use crate::error::Error;
+use crate::token::Token;
 use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
 use serde::de::{
     self, Deserialize, DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess,
     VariantAccess, Visitor,
 };
-
-use error::Error;
-use token::Token;
+use serde::forward_to_deserialize_any;
 
 #[derive(Debug)]
 pub struct Deserializer<'de> {
     tokens: &'de [Token],
 }
 
-macro_rules! assert_next_token {
-    ($de:expr, $expected:expr) => {
-        match $de.next_token_opt() {
-            Some(token) if token == $expected => {}
-            Some(other) => panic!(
-                "expected Token::{} but deserialization wants Token::{}",
-                other, $expected
-            ),
-            None => panic!(
-                "end of tokens but deserialization wants Token::{}",
-                $expected
-            ),
-        }
-    };
+fn assert_next_token(de: &mut Deserializer, expected: Token) -> Result<(), Error> {
+    match de.next_token_opt() {
+        Some(token) if token == expected => Ok(()),
+        Some(other) => Err(de::Error::custom(format!(
+            "expected Token::{} but deserialization wants Token::{}",
+            other, expected,
+        ))),
+        None => Err(de::Error::custom(format!(
+            "end of tokens but deserialization wants Token::{}",
+            expected,
+        ))),
+    }
 }
 
-macro_rules! unexpected {
-    ($token:expr) => {
-        panic!("deserialization did not expect this token: {}", $token)
-    };
+fn unexpected(token: Token) -> Error {
+    de::Error::custom(format!(
+        "deserialization did not expect this token: {}",
+        token,
+    ))
 }
 
-macro_rules! end_of_tokens {
-    () => {
-        panic!("ran out of tokens to deserialize")
-    };
+fn end_of_tokens() -> Error {
+    de::Error::custom("ran out of tokens to deserialize")
 }
 
 impl<'de> Deserializer<'de> {
     pub fn new(tokens: &'de [Token]) -> Self {
-        Deserializer { tokens: tokens }
+        Deserializer { tokens }
     }
 
     fn peek_token_opt(&self) -> Option<Token> {
-        self.tokens.first().cloned()
+        self.tokens.first().copied()
     }
 
-    fn peek_token(&self) -> Token {
-        match self.peek_token_opt() {
-            Some(token) => token,
-            None => end_of_tokens!(),
-        }
+    fn peek_token(&self) -> Result<Token, Error> {
+        self.peek_token_opt().ok_or_else(end_of_tokens)
     }
 
     pub fn next_token_opt(&mut self) -> Option<Token> {
@@ -66,14 +60,10 @@ impl<'de> Deserializer<'de> {
         }
     }
 
-    fn next_token(&mut self) -> Token {
-        match self.tokens.split_first() {
-            Some((&first, rest)) => {
-                self.tokens = rest;
-                first
-            }
-            None => end_of_tokens!(),
-        }
+    fn next_token(&mut self) -> Result<Token, Error> {
+        let (&first, rest) = self.tokens.split_first().ok_or_else(end_of_tokens)?;
+        self.tokens = rest;
+        Ok(first)
     }
 
     pub fn remaining(&self) -> usize {
@@ -89,12 +79,8 @@ impl<'de> Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let value = visitor.visit_seq(DeserializerSeqVisitor {
-            de: self,
-            len: len,
-            end: end,
-        })?;
-        assert_next_token!(self, end);
+        let value = visitor.visit_seq(DeserializerSeqVisitor { de: self, len, end })?;
+        assert_next_token(self, end)?;
         Ok(value)
     }
 
@@ -107,12 +93,8 @@ impl<'de> Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let value = visitor.visit_map(DeserializerMapVisitor {
-            de: self,
-            len: len,
-            end: end,
-        })?;
-        assert_next_token!(self, end);
+        let value = visitor.visit_map(DeserializerMapVisitor { de: self, len, end })?;
+        assert_next_token(self, end)?;
         Ok(value)
     }
 }
@@ -129,7 +111,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        let token = self.next_token();
+        let token = self.next_token()?;
         match token {
             Token::Bool(v) => visitor.visit_bool(v),
             Token::I8(v) => visitor.visit_i8(v),
@@ -161,50 +143,50 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             Token::Map { len } => self.visit_map(len, Token::MapEnd, visitor),
             Token::Struct { len, .. } => self.visit_map(Some(len), Token::StructEnd, visitor),
             Token::Enum { .. } => {
-                let variant = self.next_token();
-                let next = self.peek_token();
+                let variant = self.next_token()?;
+                let next = self.peek_token()?;
                 match (variant, next) {
                     (Token::Str(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_str(variant)
                     }
                     (Token::BorrowedStr(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_borrowed_str(variant)
                     }
                     (Token::String(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_string(variant.to_string())
                     }
                     (Token::Bytes(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_bytes(variant)
                     }
                     (Token::BorrowedBytes(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_borrowed_bytes(variant)
                     }
                     (Token::ByteBuf(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_byte_buf(variant.to_vec())
                     }
                     (Token::U8(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_u8(variant)
                     }
                     (Token::U16(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_u16(variant)
                     }
                     (Token::U32(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_u32(variant)
                     }
                     (Token::U64(variant), Token::Unit) => {
-                        self.next_token();
+                        self.next_token()?;
                         visitor.visit_u64(variant)
                     }
-                    (variant, Token::Unit) => unexpected!(variant),
+                    (variant, Token::Unit) => Err(unexpected(variant)),
                     (variant, _) => {
                         visitor.visit_map(EnumMapVisitor::new(self, variant, EnumFormat::Any))
                     }
@@ -232,9 +214,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
             | Token::MapEnd
             | Token::StructEnd
             | Token::TupleVariantEnd
-            | Token::StructVariantEnd => {
-                unexpected!(token);
-            }
+            | Token::StructVariantEnd => Err(unexpected(token)),
         }
     }
 
@@ -242,13 +222,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::Unit | Token::None => {
-                self.next_token();
+                self.next_token()?;
                 visitor.visit_none()
             }
             Token::Some => {
-                self.next_token();
+                self.next_token()?;
                 visitor.visit_some(self)
             }
             _ => self.deserialize_any(visitor),
@@ -264,9 +244,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::Enum { name: n } if name == n => {
-                self.next_token();
+                self.next_token()?;
 
                 visitor.visit_enum(DeserializerEnumVisitor { de: self })
             }
@@ -286,9 +266,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::UnitStruct { .. } => {
-                assert_next_token!(self, Token::UnitStruct { name: name });
+                assert_next_token(self, Token::UnitStruct { name })?;
                 visitor.visit_unit()
             }
             _ => self.deserialize_any(visitor),
@@ -303,9 +283,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::NewtypeStruct { .. } => {
-                assert_next_token!(self, Token::NewtypeStruct { name: name });
+                assert_next_token(self, Token::NewtypeStruct { name })?;
                 visitor.visit_newtype_struct(self)
             }
             _ => self.deserialize_any(visitor),
@@ -316,21 +296,21 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::Unit | Token::UnitStruct { .. } => {
-                self.next_token();
+                self.next_token()?;
                 visitor.visit_unit()
             }
             Token::Seq { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_seq(Some(len), Token::SeqEnd, visitor)
             }
             Token::Tuple { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_seq(Some(len), Token::TupleEnd, visitor)
             }
             Token::TupleStruct { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_seq(Some(len), Token::TupleStructEnd, visitor)
             }
             _ => self.deserialize_any(visitor),
@@ -346,25 +326,25 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::Unit => {
-                self.next_token();
+                self.next_token()?;
                 visitor.visit_unit()
             }
             Token::UnitStruct { .. } => {
-                assert_next_token!(self, Token::UnitStruct { name: name });
+                assert_next_token(self, Token::UnitStruct { name })?;
                 visitor.visit_unit()
             }
             Token::Seq { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_seq(Some(len), Token::SeqEnd, visitor)
             }
             Token::Tuple { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_seq(Some(len), Token::TupleEnd, visitor)
             }
             Token::TupleStruct { len: n, .. } => {
-                assert_next_token!(self, Token::TupleStruct { name: name, len: n });
+                assert_next_token(self, Token::TupleStruct { name, len: n })?;
                 self.visit_seq(Some(len), Token::TupleStructEnd, visitor)
             }
             _ => self.deserialize_any(visitor),
@@ -380,13 +360,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        match self.peek_token() {
+        match self.peek_token()? {
             Token::Struct { len: n, .. } => {
-                assert_next_token!(self, Token::Struct { name: name, len: n });
+                assert_next_token(self, Token::Struct { name, len: n })?;
                 self.visit_map(Some(fields.len()), Token::StructEnd, visitor)
             }
             Token::Map { .. } => {
-                self.next_token();
+                self.next_token()?;
                 self.visit_map(Some(fields.len()), Token::MapEnd, visitor)
             }
             _ => self.deserialize_any(visitor),
@@ -476,7 +456,7 @@ impl<'de, 'a> EnumAccess<'de> for DeserializerEnumVisitor<'a, 'de> {
     where
         V: DeserializeSeed<'de>,
     {
-        match self.de.peek_token() {
+        match self.de.peek_token()? {
             Token::UnitVariant { variant: v, .. }
             | Token::NewtypeVariant { variant: v, .. }
             | Token::TupleVariant { variant: v, .. }
@@ -497,9 +477,9 @@ impl<'de, 'a> VariantAccess<'de> for DeserializerEnumVisitor<'a, 'de> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Error> {
-        match self.de.peek_token() {
+        match self.de.peek_token()? {
             Token::UnitVariant { .. } => {
-                self.de.next_token();
+                self.de.next_token()?;
                 Ok(())
             }
             _ => Deserialize::deserialize(self.de),
@@ -510,9 +490,9 @@ impl<'de, 'a> VariantAccess<'de> for DeserializerEnumVisitor<'a, 'de> {
     where
         T: DeserializeSeed<'de>,
     {
-        match self.de.peek_token() {
+        match self.de.peek_token()? {
             Token::NewtypeVariant { .. } => {
-                self.de.next_token();
+                self.de.next_token()?;
                 seed.deserialize(self.de)
             }
             _ => seed.deserialize(self.de),
@@ -523,26 +503,26 @@ impl<'de, 'a> VariantAccess<'de> for DeserializerEnumVisitor<'a, 'de> {
     where
         V: Visitor<'de>,
     {
-        match self.de.peek_token() {
+        match self.de.peek_token()? {
             Token::TupleVariant { len: enum_len, .. } => {
-                let token = self.de.next_token();
+                let token = self.de.next_token()?;
 
                 if len == enum_len {
                     self.de
                         .visit_seq(Some(len), Token::TupleVariantEnd, visitor)
                 } else {
-                    unexpected!(token);
+                    Err(unexpected(token))
                 }
             }
             Token::Seq {
                 len: Some(enum_len),
             } => {
-                let token = self.de.next_token();
+                let token = self.de.next_token()?;
 
                 if len == enum_len {
                     self.de.visit_seq(Some(len), Token::SeqEnd, visitor)
                 } else {
-                    unexpected!(token);
+                    Err(unexpected(token))
                 }
             }
             _ => de::Deserializer::deserialize_any(self.de, visitor),
@@ -557,27 +537,27 @@ impl<'de, 'a> VariantAccess<'de> for DeserializerEnumVisitor<'a, 'de> {
     where
         V: Visitor<'de>,
     {
-        match self.de.peek_token() {
+        match self.de.peek_token()? {
             Token::StructVariant { len: enum_len, .. } => {
-                let token = self.de.next_token();
+                let token = self.de.next_token()?;
 
                 if fields.len() == enum_len {
                     self.de
                         .visit_map(Some(fields.len()), Token::StructVariantEnd, visitor)
                 } else {
-                    unexpected!(token);
+                    Err(unexpected(token))
                 }
             }
             Token::Map {
                 len: Some(enum_len),
             } => {
-                let token = self.de.next_token();
+                let token = self.de.next_token()?;
 
                 if fields.len() == enum_len {
                     self.de
                         .visit_map(Some(fields.len()), Token::MapEnd, visitor)
                 } else {
-                    unexpected!(token);
+                    Err(unexpected(token))
                 }
             }
             _ => de::Deserializer::deserialize_any(self.de, visitor),
@@ -602,9 +582,9 @@ enum EnumFormat {
 impl<'a, 'de> EnumMapVisitor<'a, 'de> {
     fn new(de: &'a mut Deserializer<'de>, variant: Token, format: EnumFormat) -> Self {
         EnumMapVisitor {
-            de: de,
+            de,
             variant: Some(variant),
-            format: format,
+            format,
         }
     }
 }
@@ -622,7 +602,7 @@ impl<'de, 'a> MapAccess<'de> for EnumMapVisitor<'a, 'de> {
                 .deserialize(BytesDeserializer { value: variant })
                 .map(Some),
             Some(Token::U32(variant)) => seed.deserialize(variant.into_deserializer()).map(Some),
-            Some(other) => unexpected!(other),
+            Some(other) => Err(unexpected(other)),
             None => Ok(None),
         }
     }
@@ -641,7 +621,7 @@ impl<'de, 'a> MapAccess<'de> for EnumMapVisitor<'a, 'de> {
                     };
                     seed.deserialize(SeqAccessDeserializer::new(visitor))?
                 };
-                assert_next_token!(self.de, Token::TupleVariantEnd);
+                assert_next_token(self.de, Token::TupleVariantEnd)?;
                 Ok(value)
             }
             EnumFormat::Map => {
@@ -653,7 +633,7 @@ impl<'de, 'a> MapAccess<'de> for EnumMapVisitor<'a, 'de> {
                     };
                     seed.deserialize(MapAccessDeserializer::new(visitor))?
                 };
-                assert_next_token!(self.de, Token::StructVariantEnd);
+                assert_next_token(self.de, Token::StructVariantEnd)?;
                 Ok(value)
             }
             EnumFormat::Any => seed.deserialize(&mut *self.de),
