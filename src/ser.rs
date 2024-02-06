@@ -1,7 +1,6 @@
-use serde::{ser, Serialize};
-
-use error::Error;
-use token::Token;
+use crate::error::Error;
+use crate::token::Token;
+use serde::ser::{self, Serialize};
 
 /// A `Serializer` that ensures that a value serializes to a given list of
 /// tokens.
@@ -13,7 +12,7 @@ pub struct Serializer<'a> {
 impl<'a> Serializer<'a> {
     /// Creates the serializer.
     pub fn new(tokens: &'a [Token]) -> Self {
-        Serializer { tokens: tokens }
+        Serializer { tokens }
     }
 
     /// Pulls the next token off of the serializer, ignoring it.
@@ -63,14 +62,12 @@ macro_rules! assert_next_token {
     ($ser:expr, $actual:expr, $pat:pat, $guard:expr) => {
         match $ser.next_token() {
             Some($pat) if $guard => {}
-            Some(expected) => {
-                panic!("expected Token::{} but serialized as {}",
-                       expected, $actual);
-            }
-            None => {
-                panic!("expected end of tokens, but {} was serialized",
-                       $actual);
-            }
+            Some(expected) => return Err(ser::Error::custom(
+                format!("expected Token::{} but serialized as {}", expected, $actual)
+            )),
+            None => return Err(ser::Error::custom(
+                format!("expected end of tokens, but {} was serialized", $actual)
+            )),
         }
     };
 }
@@ -181,7 +178,7 @@ impl<'s, 'a> ser::Serializer for &'s mut Serializer<'a> {
         _variant_index: u32,
         variant: &'static str,
     ) -> Result<(), Error> {
-        if self.tokens.first() == Some(&Token::Enum { name: name }) {
+        if self.tokens.first() == Some(&Token::Enum { name }) {
             self.next_token();
             assert_next_token!(self, Str(variant));
             assert_next_token!(self, Unit);
@@ -209,7 +206,7 @@ impl<'s, 'a> ser::Serializer for &'s mut Serializer<'a> {
     where
         T: Serialize,
     {
-        if self.tokens.first() == Some(&Token::Enum { name: name }) {
+        if self.tokens.first() == Some(&Token::Enum { name }) {
             self.next_token();
             assert_next_token!(self, Str(variant));
         } else {
@@ -253,7 +250,7 @@ impl<'s, 'a> ser::Serializer for &'s mut Serializer<'a> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Error> {
-        if self.tokens.first() == Some(&Token::Enum { name: name }) {
+        if self.tokens.first() == Some(&Token::Enum { name }) {
             self.next_token();
             assert_next_token!(self, Str(variant));
             let len = Some(len);
@@ -288,7 +285,7 @@ impl<'s, 'a> ser::Serializer for &'s mut Serializer<'a> {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Error> {
-        if self.tokens.first() == Some(&Token::Enum { name: name }) {
+        if self.tokens.first() == Some(&Token::Enum { name }) {
             self.next_token();
             assert_next_token!(self, Str(variant));
             let len = Some(len);
