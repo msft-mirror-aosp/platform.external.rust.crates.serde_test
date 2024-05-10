@@ -20,11 +20,11 @@
 //!
 //! [`linked-hash-map`]: https://github.com/contain-rs/linked-hash-map
 //!
-//! ```edition2018
+//! ```
 //! # const IGNORE: &str = stringify! {
 //! use linked_hash_map::LinkedHashMap;
 //! # };
-//! use serde_test::{Token, assert_tokens};
+//! use serde_test::{assert_tokens, Token};
 //!
 //! # use std::fmt;
 //! # use std::marker::PhantomData;
@@ -106,10 +106,13 @@
 //! fn test_ser_de_empty() {
 //!     let map = LinkedHashMap::<char, u32>::new();
 //!
-//!     assert_tokens(&map, &[
-//!         Token::Map { len: Some(0) },
-//!         Token::MapEnd,
-//!     ]);
+//!     assert_tokens(
+//!         &map,
+//!         &[
+//!             Token::Map { len: Some(0) },
+//!             Token::MapEnd,
+//!         ],
+//!     );
 //! }
 //!
 //! #[test]
@@ -120,18 +123,19 @@
 //!     map.insert('a', 10);
 //!     map.insert('c', 30);
 //!
-//!     assert_tokens(&map, &[
-//!         Token::Map { len: Some(3) },
-//!         Token::Char('b'),
-//!         Token::I32(20),
-//!
-//!         Token::Char('a'),
-//!         Token::I32(10),
-//!
-//!         Token::Char('c'),
-//!         Token::I32(30),
-//!         Token::MapEnd,
-//!     ]);
+//!     assert_tokens(
+//!         &map,
+//!         &[
+//!             Token::Map { len: Some(3) },
+//!             Token::Char('b'),
+//!             Token::I32(20),
+//!             Token::Char('a'),
+//!             Token::I32(10),
+//!             Token::Char('c'),
+//!             Token::I32(30),
+//!             Token::MapEnd,
+//!         ],
+//!     );
 //! }
 //! #
 //! # fn main() {
@@ -140,49 +144,27 @@
 //! # }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/serde_test/1.0.152")]
-#![cfg_attr(feature = "cargo-clippy", allow(renamed_and_removed_lints))]
+#![doc(html_root_url = "https://docs.rs/serde_test/1.0.176")]
 // Ignored clippy lints
-#![cfg_attr(feature = "cargo-clippy", allow(float_cmp, needless_doctest_main))]
+#![allow(clippy::float_cmp, clippy::needless_doctest_main)]
 // Ignored clippy_pedantic lints
-#![cfg_attr(
-    feature = "cargo-clippy",
-    allow(
-        cloned_instead_of_copied,
-        doc_link_with_quotes, // https://github.com/rust-lang/rust-clippy/issues/8961
-        empty_line_after_outer_attr,
-        manual_assert,
-        missing_docs_in_private_items,
-        missing_panics_doc,
-        module_name_repetitions,
-        must_use_candidate,
-        redundant_field_names,
-        too_many_lines,
-        type_repetition_in_bounds, // https://github.com/rust-lang/rust-clippy/issues/8772
-        use_debug,
-        use_self
-    )
+#![allow(
+    clippy::manual_assert,
+    clippy::missing_panics_doc,
+    clippy::module_name_repetitions,
+    clippy::too_many_lines
 )]
-
-#[macro_use]
-extern crate serde;
-
-mod de;
-mod error;
-mod ser;
 
 mod assert;
 mod configure;
+mod de;
+mod error;
+mod ser;
 mod token;
 
-pub use assert::{
+pub use crate::assert::{
     assert_de_tokens, assert_de_tokens_error, assert_ser_tokens, assert_ser_tokens_error,
     assert_tokens,
 };
-pub use token::Token;
-
-pub use configure::{Compact, Configure, Readable};
-
-// Not public API.
-#[doc(hidden)]
-pub use de::Deserializer;
+pub use crate::configure::{Compact, Configure, Readable};
+pub use crate::token::Token;
